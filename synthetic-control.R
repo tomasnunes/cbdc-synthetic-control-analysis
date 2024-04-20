@@ -3,39 +3,61 @@
 #install.packages("ggplot2")  # For enhanced plotting capabilities
 #install.packages("tidyverse")
 #install.packages("zoo")
+#install.packages("dplyr")
 
 # Load packages
 library(Synth)
 library(ggplot2)
 library(tidyverse)
 library(zoo)
+#library(dplyr)
 
 # Read the dataset
 data <- read.csv('data/synthetic-control-dataset.csv')
 
+# Define predictors and time window
+inputs <- c("PCPI_IX_CH_DM", "FILR_PA_DM", "FISR_PA_DM", "IR_SPREAD_DM", "FITB_PA_DM", "BANK_PREM_RATE_DM", "FM2_CH_DM", "FM2_NGDP_DM", "FM2_RES_DM")
+#inputs <- c("NGDP_NSA_XDC_R_CH","PCPI_IX_CH_DM", "ENDE_XDC_USD_RATE", "FILR_PA_DM", "FISR_PA_DM", "IR_SPREAD_DM", "FITB_PA_DM", "BANK_PREMIUM_RATE_DM")
+#inputs_demeaned <- c("DM_FIDR_PA", "DM_PCPI_IX_CH", "DM_FILR_PA", "DM_FISR_PA", "DM_IR_SPREAD", "DM_FITB_PA_DM", "DM_BANK_PREMIUM_RATE")
+
+output <- c("FIDR_PA_DM")
+#output <- c("FIDR_PA")
+#output_demeaned <- c("DM_FIDR_PA")
+
+treatment_unit = 1
+control_units <- c(2:16)
+start_year <- min(data$year)
+event_year <- 2020
+end_year <- max(data$year)
+increment <- 1 # 1 for yearly, 1/4 for quarterly, and 1/12 for monthly
+
+# Generate the sequence from start_year to end_year and round it to 3 decimal places
+predict_time_seq <- round(seq(start_year, event_year, by = increment), 2)
+full_time_seq <- round(seq(start_year, end_year, by = increment), 2)
+
+# Calculate the mean only for the specific time window but apply the subtraction to all years
+#data <- data %>%
+#  group_by(code) %>%
+#  mutate(
+#    across(all_of(c(output,inputs)),
+#           ~ . - mean(.[year >= start_year & year <= end_year], na.rm = TRUE),
+#           .names = "DM_{.col}")
+#  ) %>%
+#  ungroup()
+
 # Prepare the data using the Synth package
 dataprep.out <- dataprep(
   foo = data,
-  # YEARLY DATA
-  #predictors = c("NGDP_XDC_R_CH", "PCPI_IX_CH", "ENDE_XDC_USD_RATE", "FITB_PA_R", "FILR_PA_R", "FISR_PA_R", "FPOLM_PA"),
-  # QUARTERLY DATA
-  #predictors = c("NGDP_NSA_XDC_R_CH", "PCPI_IX_CH", "ENDE_XDC_USD_RATE", "FITB_PA_R", "FILR_PA_R", "FISR_PA_R", "FPOLM_PA"),
-  predictors = c("NGDP_NSA_XDC_R_CH_DM", "PCPI_IX_CH_DM", "ENDE_XDC_USD_RATE", "FITB_PA_R_DM", "FILR_PA_R_DM", "FISR_PA_R_DM", "FPOLM_PA_DM"),
+  predictors = inputs,
   predictors.op = "mean",
   time.variable = "year",
-  #dependent = "FIDR_PA_R",
-  dependent = "FIDR_PA_R_DM",
+  dependent = output,
   unit.variable = "code",
-  treatment.identifier = 1,
-  controls.identifier = c(2:18),
-  # YEARLY DATA
-  #time.predictors.prior = seq(min(data$year), 2020, by = 1),
-  #time.optimize.ssr = seq(min(data$year), 2020, by = 1),
-  #time.plot = seq(min(data$year), max(data$year), by = 1)
-  # QUARTERLY DATA
-  time.predictors.prior = seq(2011.0, 2020.75, by = 0.25),
-  time.optimize.ssr = seq(2011.0, 2020.75, by = 0.25),
-  time.plot = seq(2011.0, max(data$year), by = 0.25)
+  treatment.identifier = treatment_unit,
+  controls.identifier = control_units,
+  time.predictors.prior = predict_time_seq,
+  time.optimize.ssr = predict_time_seq,
+  time.plot = full_time_seq
 )
 
 # Build the synthetic control model
@@ -44,16 +66,18 @@ synth.out <- synth(dataprep.out, optimxmethod='All')
 # Plot the paths of actual vs synthetic
 path.plot(synth.res = synth.out,
           dataprep.res = dataprep.out,
-          tr.intake = 2020.75,
+          tr.intake = event_year,
           Ylab = "Interest Rate on Deposits",
           Xlab = "Year",
+          Ylim = c(-2,2),
           Legend = c("The Bahamas", "Synthetic The Bahamas"),
           Main = "The Bahamas vs Synthetic The Bahamas")
 
 # Plot the gaps
 gaps.plot(synth.res = synth.out,
           dataprep.res = dataprep.out,
-          tr.intake = 2020.75,
+          tr.intake = event_year,
           Ylab = "Effect",
           Xlab = "Year",
+          Ylim = c(-1,1),
           Main = "Gap between the Interest Rate on Deposits in The Bahamas and its synthetic version")
